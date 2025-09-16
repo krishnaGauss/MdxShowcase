@@ -1,0 +1,304 @@
+import { useState, useCallback, useEffect } from "react";
+import { useRoute } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { MdxDocument } from "@shared/schema";
+import MdxEditor from "@/components/mdx-editor";
+import MdxPreview from "@/components/mdx-preview";
+import Sidebar from "@/components/sidebar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Code, 
+  Download, 
+  Share, 
+  Settings, 
+  Undo, 
+  Redo, 
+  Search,
+  Expand,
+  Smartphone,
+  Tablet
+} from "lucide-react";
+
+export default function Editor() {
+  const [, params] = useRoute("/editor/:id");
+  const documentId = params?.id || "default";
+  const [content, setContent] = useState("");
+  const [title, setTitle] = useState("");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [isResizing, setIsResizing] = useState(false);
+  const { toast } = useToast();
+
+  // Fetch document
+  const { data: document, isLoading } = useQuery<MdxDocument>({
+    queryKey: ["/api/documents", documentId],
+    enabled: !!documentId,
+  });
+
+  // Update document mutation
+  const updateMutation = useMutation({
+    mutationFn: async (data: { title?: string; content?: string }) => {
+      const response = await apiRequest("PUT", `/api/documents/${documentId}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/documents", documentId] });
+    },
+  });
+
+  // Auto-save functionality
+  useEffect(() => {
+    if (!document) return;
+    
+    const timer = setTimeout(() => {
+      if (content !== document.content || title !== document.title) {
+        updateMutation.mutate({ content, title });
+      }
+    }, 2000); // Auto-save after 2 seconds of inactivity
+
+    return () => clearTimeout(timer);
+  }, [content, title, document, updateMutation]);
+
+  // Initialize content when document loads
+  useEffect(() => {
+    if (document) {
+      setContent(document.content);
+      setTitle(document.title);
+    }
+  }, [document]);
+
+  // Panel resizing
+  const handleMouseDown = useCallback(() => {
+    setIsResizing(true);
+  }, []);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+    
+    const container = window.document.getElementById("editor-container");
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const newWidth = ((e.clientX - containerRect.left - 256) / (containerRect.width - 256)) * 100; // Account for sidebar width
+    setLeftPanelWidth(Math.max(20, Math.min(80, newWidth)));
+  }, [isResizing]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.document.addEventListener("mousemove", handleMouseMove);
+      window.document.addEventListener("mouseup", handleMouseUp);
+    }
+    
+    return () => {
+      window.document.removeEventListener("mousemove", handleMouseMove);
+      window.document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, handleMouseMove, handleMouseUp]);
+
+  const handleExport = () => {
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = `${title || "document"}.mdx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export successful",
+      description: "Your MDX file has been downloaded.",
+    });
+  };
+
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast({
+      title: "Link copied",
+      description: "Share link has been copied to clipboard.",
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Code className="h-12 w-12 text-primary mx-auto mb-4" />
+          <p className="text-lg">Loading MDX editor...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground" data-testid="editor-page">
+      {/* Header */}
+      <header className="bg-card border-b border-border" data-testid="header">
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Code className="text-primary text-xl" />
+              <h1 className="text-xl font-bold">MDX Interactive Platform</h1>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+              <span className="bg-primary/20 text-primary px-2 py-1 rounded text-xs">Live Preview</span>
+              <span className="bg-accent/20 text-accent px-2 py-1 rounded text-xs">Auto-save</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExport}
+              data-testid="button-export"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+            
+            <Button
+              size="sm"
+              onClick={handleShare}
+              data-testid="button-share"
+            >
+              <Share className="w-4 h-4 mr-2" />
+              Share
+            </Button>
+            
+            <Button variant="ghost" size="sm" data-testid="button-settings">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <div className="flex h-screen" id="editor-container">
+        {/* Sidebar */}
+        <Sidebar documentId={documentId} />
+
+        {/* Editor and Preview Container */}
+        <div className="flex-1 flex">
+          {/* Editor Panel */}
+          <div 
+            className="flex flex-col"
+            style={{ width: `${leftPanelWidth}%` }}
+            data-testid="editor-panel"
+          >
+            {/* Editor Toolbar */}
+            <div className="bg-secondary/30 border-b border-border px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="bg-transparent border-none text-sm font-medium"
+                  placeholder="Document title..."
+                  data-testid="input-title"
+                />
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-primary rounded-full"></span>
+                  <span className="text-xs text-muted-foreground">Live</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Button variant="ghost" size="sm" data-testid="button-undo">
+                  <Undo className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" data-testid="button-redo">
+                  <Redo className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" data-testid="button-search">
+                  <Search className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Code Editor */}
+            <div className="flex-1">
+              <MdxEditor
+                content={content}
+                onChange={setContent}
+                data-testid="mdx-editor"
+              />
+            </div>
+          </div>
+          
+          {/* Resizer */}
+          <div 
+            className="resizer" 
+            onMouseDown={handleMouseDown}
+            data-testid="resizer"
+          />
+          
+          {/* Preview Panel */}
+          <div 
+            className="flex flex-col"
+            style={{ width: `${100 - leftPanelWidth}%` }}
+            data-testid="preview-panel"
+          >
+            {/* Preview Toolbar */}
+            <div className="bg-secondary/30 border-b border-border px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <span className="text-sm font-medium">Live Preview</span>
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                  <span className="text-xs text-muted-foreground">Updating</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Button variant="ghost" size="sm" data-testid="button-expand">
+                  <Expand className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" data-testid="button-mobile">
+                  <Smartphone className="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="sm" data-testid="button-tablet">
+                  <Tablet className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Preview Content */}
+            <div className="flex-1 overflow-auto">
+              <MdxPreview
+                content={content}
+                documentId={documentId}
+                data-testid="mdx-preview"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Bar */}
+      <div className="bg-secondary border-t border-border px-6 py-2 flex items-center justify-between text-xs" data-testid="status-bar">
+        <div className="flex items-center space-x-4">
+          <span className="flex items-center space-x-1">
+            <span className="w-2 h-2 bg-primary rounded-full"></span>
+            <span>Connected</span>
+          </span>
+          <span className="text-muted-foreground">Lines: {content.split('\n').length}</span>
+          <span className="text-muted-foreground">Characters: {content.length}</span>
+          <span className="text-muted-foreground">
+            Shortcodes: {(content.match(/\[(yesno-question|interactivesection)\]/g) || []).length}
+          </span>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <span className="text-muted-foreground">
+            Last saved: {updateMutation.isPending ? "Saving..." : "Auto-saved"}
+          </span>
+          <span className="text-muted-foreground">MDX v2.3.0</span>
+        </div>
+      </div>
+    </div>
+  );
+}
