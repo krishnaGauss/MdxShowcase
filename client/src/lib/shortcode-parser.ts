@@ -83,12 +83,13 @@ export function parseShortcodes(content: string, documentId: string): string {
   );
 
   // Add global script for handling yes/no responses
-  if (processedContent.includes('handleYesNoResponse')) {
+  if (processedContent.includes('yesno-question-component')) {
     processedContent += `
       <script>
-        window.handleYesNoResponse = function(documentId, questionId, response) {
-          const sessionId = sessionStorage.getItem('sessionId') || crypto.randomUUID();
-          sessionStorage.setItem('sessionId', sessionId);
+        if (!window.handleYesNoResponse) {
+          window.handleYesNoResponse = function(documentId, questionId, response) {
+            const sessionId = sessionStorage.getItem('sessionId') || crypto.randomUUID();
+            sessionStorage.setItem('sessionId', sessionId);
           
           fetch('/api/responses', {
             method: 'POST',
@@ -117,7 +118,8 @@ export function parseShortcodes(content: string, documentId: string): string {
           .catch(err => {
             console.error('Failed to record response:', err);
           });
-        };
+          };
+        }
       </script>
     `;
   }
