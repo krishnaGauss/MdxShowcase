@@ -19,8 +19,11 @@ import {
   Search,
   Expand,
   Smartphone,
-  Tablet
+  Tablet,
+  ChevronDown
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { processMdx } from "@/lib/mdx-processor";
 
 export default function Editor() {
   const [, params] = useRoute("/editor/:id");
@@ -103,7 +106,7 @@ export default function Editor() {
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
 
-  const handleExport = () => {
+  const handleExportMDX = () => {
     if (typeof window === 'undefined') return;
     
     const blob = new Blob([content], { type: "text/markdown" });
@@ -117,6 +120,56 @@ export default function Editor() {
     toast({
       title: "Export successful",
       description: "Your MDX file has been downloaded.",
+    });
+  };
+
+  const handleExportHTML = () => {
+    if (typeof window === 'undefined') return;
+    
+    // Process MDX to HTML
+    const processedHTML = processMdx(content, {}, documentId);
+    
+    // Create a complete HTML document
+    const fullHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title || "MDX Document"}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem; }
+    .interactive-section-highlight { background: linear-gradient(90deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05)); border-left: 3px solid #22c55e; padding: 1.5rem; border-radius: 0.5rem; margin: 1.5rem 0; }
+    .yesno-question-component { background: #1f2937; border: 1px solid #22c55e; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; }
+    button { background: #22c55e; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.375rem; margin: 0 0.5rem 0 0; cursor: pointer; }
+    button:hover { background: #16a34a; }
+    h1 { font-size: 2rem; font-weight: bold; margin-bottom: 1.5rem; }
+    h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; }
+    p { margin-bottom: 1rem; }
+    strong { font-weight: 600; }
+    em { font-style: italic; }
+    code { background: #374151; color: #fbbf24; padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem; }
+    a { color: #22c55e; }
+    a:hover { text-decoration: underline; }
+    ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 2rem; }
+    li { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  ${processedHTML}
+</body>
+</html>`;
+    
+    const blob = new Blob([fullHTML], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = `${title || "document"}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export successful",
+      description: "Your HTML file has been downloaded.",
     });
   };
 
@@ -156,15 +209,29 @@ export default function Editor() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleExport}
-              data-testid="button-export"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="button-export"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportMDX} data-testid="menu-export-mdx">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export as MDX
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportHTML} data-testid="menu-export-html">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export as HTML
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             
             <Button
               size="sm"
