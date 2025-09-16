@@ -1,0 +1,144 @@
+document.addEventListener("DOMContentLoaded", async () => {
+  const contentSection = document.querySelector(".content-section");
+  const progressBar = document.querySelector(".progress");
+  const container = document.getElementById("textStepsContainer");
+
+  // Fetch the Markdown content
+  try {
+    const response = await fetch("steps.md");
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const markdownText = await response.text();
+    renderContent(markdownText);
+  } catch (error) {
+    console.error("Failed to load markdown content:", error);
+    container.innerHTML = `<div class="p-8 text-red-500">Error: Could not load the instructional content.</div>`;
+  }
+
+  // Function to process and render the content
+  function renderContent(markdown) {
+    // 1. Split the markdown file into sections by the horizontal rule '---'
+    const sections = markdown.split(/\n---\n/);
+    let htmlContent = "";
+
+    sections.forEach((sectionMarkdown) => {
+      // 2. Convert each section's markdown to HTML
+      let sectionHtml = marked.parse(sectionMarkdown);
+
+      // 3. Replace our custom shortcodes with actual HTML structures
+      // [INTERACTION]...[/INTERACTION] shortcode
+      sectionHtml = sectionHtml.replace(
+        /\[INTERACTION\]([\s\S]*?)\[\/INTERACTION\]/g,
+        (match, content) => {
+          return `<div class="interaction-step">${content.trim()}</div>`;
+        }
+      );
+
+      // [YESNO]...[/YESNO] shortcode
+      sectionHtml = sectionHtml.replace(
+        /\[YESNO\]([\s\S]*?)\[\/YESNO\]/g,
+        (match, content) => {
+          return `
+            <div class="interaction-step">
+              ${content.trim()}
+              <div class="yes-no-container" id="yesNoContainer">
+                <button class="yes-btn" id="yesBtn">Yes</button>
+                <button class="no-btn" id="noBtn">No</button>
+              </div>
+              <div class="question-feedback-container">
+                <div id="feedbackContainer" style="display: none;"></div>
+              </div>
+            </div>`;
+        }
+      );
+
+      htmlContent += `<section class="text-section"><div class="text-container">${sectionHtml}</div></section>`;
+    });
+
+    container.innerHTML = htmlContent;
+    
+    // After rendering, initialize event listeners for interactive elements
+    initializeInteractiveElements();
+  }
+
+  // Scroll listener for the progress bar
+  contentSection.addEventListener("scroll", () => {
+    const scrollable = contentSection.scrollHeight - contentSection.clientHeight;
+    const progress = (contentSection.scrollTop / scrollable) * 100;
+    progressBar.style.width = `${Math.min(progress, 100)}%`;
+  });
+});
+
+function initializeInteractiveElements() {
+  // Get elements
+  const yesBtn = document.getElementById("yesBtn");
+  const noBtn = document.getElementById("noBtn");
+  const yesSound = document.getElementById("yesSound");
+  const noSound = document.getElementById("noSound");
+  const feedbackContainer = document.getElementById("feedbackContainer");
+  const modal = document.getElementById("explanationModal");
+  const modalClose = document.querySelector(".modal-close");
+
+  // Function to show modal
+  function showModal() {
+    modal.classList.add("show");
+  }
+
+  // Function to hide modal
+  function hideModal() {
+    modal.classList.remove("show");
+  }
+
+  if (yesBtn && noBtn) {
+    // Yes button click handler
+    yesBtn.addEventListener("click", function () {
+      noSound.play();
+      feedbackContainer.innerHTML = `
+        <div class="feedback-container incorrect">
+          <div><span>Incorrect</span></div>
+          <button class="how-btn" id="howBtn">Why?</button>
+        </div>`;
+      feedbackContainer.style.display = "flex";
+      yesBtn.style.backgroundColor = "rgb(229, 231, 235)";
+      noBtn.style.backgroundColor = "transparent";
+      document.getElementById("howBtn").addEventListener("click", showModal);
+    });
+
+    // No button click handler
+    noBtn.addEventListener("click", function () {
+      yesSound.play();
+      feedbackContainer.innerHTML = `
+        <div class="feedback-container correct">
+          <div><span>Correct</span><span class="xp-text">+10 XP</span></div>
+          <button class="how-btn" id="howBtn">Why?</button>
+        </div>`;
+      feedbackContainer.style.display = "flex";
+      noBtn.style.backgroundColor = "rgb(229, 231, 235)";
+      yesBtn.style.backgroundColor = "transparent";
+      document.getElementById("howBtn").addEventListener("click", showModal);
+
+      // Confetti effect
+      const interactionStep = noBtn.closest(".interaction-step");
+      interactionStep.style.position = "relative";
+      const confettiCanvas = document.createElement("canvas");
+      Object.assign(confettiCanvas.style, {
+          position: "absolute", top: "0", left: "0", width: "100%", height: "100%", pointerEvents: "none", zIndex: "10"
+      });
+      interactionStep.appendChild(confettiCanvas);
+      const myConfetti = confetti.create(confettiCanvas, { resize: true });
+      myConfetti({ particleCount: 100, spread: 70, origin: { x: 0.5, y: 1 }, disableForReducedMotion: true });
+      setTimeout(() => interactionStep.removeChild(confettiCanvas), 3000);
+    });
+  }
+
+  // Modal close events
+  if (modalClose) {
+    modalClose.addEventListener("click", hideModal);
+  }
+  window.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      hideModal();
+    }
+  });
+}

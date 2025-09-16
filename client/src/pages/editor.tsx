@@ -75,7 +75,7 @@ export default function Editor() {
   }, []);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
+    if (!isResizing || typeof window === 'undefined') return;
     
     const container = window.document.getElementById("editor-container");
     if (!container) return;
@@ -90,18 +90,22 @@ export default function Editor() {
   }, []);
 
   useEffect(() => {
-    if (isResizing) {
+    if (isResizing && typeof window !== 'undefined') {
       window.document.addEventListener("mousemove", handleMouseMove);
       window.document.addEventListener("mouseup", handleMouseUp);
     }
     
     return () => {
-      window.document.removeEventListener("mousemove", handleMouseMove);
-      window.document.removeEventListener("mouseup", handleMouseUp);
+      if (typeof window !== 'undefined') {
+        window.document.removeEventListener("mousemove", handleMouseMove);
+        window.document.removeEventListener("mouseup", handleMouseUp);
+      }
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
 
   const handleExport = () => {
+    if (typeof window === 'undefined') return;
+    
     const blob = new Blob([content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = window.document.createElement("a");
